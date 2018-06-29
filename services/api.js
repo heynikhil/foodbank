@@ -28,7 +28,9 @@ const callSendAPI = async (messageData) => {
             }
         })
         .catch(function (error) {
-            console.error(error);
+            console.log(error);
+            
+
         });
 }
 

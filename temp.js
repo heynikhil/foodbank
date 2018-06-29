@@ -15,4 +15,31 @@ for (const key in data) {
     }
 }
 const result = [].concat(...Object.values(data)).filter(isNaN);
-console.log(food);
+const d = [{
+    name: 'de',
+    parameters:
+    {
+        'burger.original': '',
+        pizza: [],
+        burger: [],
+        'pizza.original': '',
+        sandwich: [Array],
+        'sandwich.original': 'Schezwan Sandwich'
+    },
+    lifespan: 5
+},
+    {
+        name: 'delivery-add',
+        parameters:
+        {
+            number: [],
+            'burger.original': '',
+            pizza: [],
+            burger: [],
+            'pizza.original': '',
+            sandwich: [Array],
+            'number.original': '',
+            'sandwich.original': 'Schezwan Sandwich'
+        },
+        lifespan: 2
+    }]

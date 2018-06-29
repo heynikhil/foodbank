@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoodBank</title>
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:200,300,400,400i,500,600,700" rel="stylesheet">
+    <link rel="stylesheet" href="../css/webvUI.min.css">
+    <link rel="stylesheet" href="../css/webvUI-menu.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script type="text/javascript" src="../js/webvUI.min.js"></script>
+    <script type="text/javascript" src="../js/webvUI-menu.js"></script>
+    <script type="text/javascript" src="../js/webvUI-slider.js"></script>
+    <script>
+        (function (d, s, id) {
+            var js, fjs = d.getElementsByTagName(s)[0];
+            if (d.getElementById(id)) { return; }
+            js = d.createElement(s); js.id = id;
+            js.src = "//connect.facebook.net/en_US/messenger.Extensions.js";
+            fjs.parentNode.insertBefore(js, fjs);
+        }(document, 'script', 'Messenger'));
+        window.extAsyncInit = () => {
+            // TODO: How to parse env file from here?
+            MessengerExtensions.getSupportedFeatures(function success(result) {
+                let features = result.supported_features;
+                console.log(features);
+
+                if (features.includes("context")) {
+                    MessengerExtensions.getContext('583748231997257',
+                        function success(thread_context) {
+                            console.log(thread_context.psid);
+                            // success
+                            document.getElementById("psid").value = thread_context.psid;
+                        },
+                        function error(err) {
+                            // error
+                            console.log(err);
+                        }
+                    );
+                }
+            }, function error(err) {
+                // error retrieving supported features
+                console.log(err);
+            });
+            document.getElementById('submitButton').addEventListener('click', () => {
+                MessengerExtensions.requestCloseBrowser(function success() {
+                    console.log("Webview closing");
+                }, function error(err) {
+                    console.log(err);
+                });
+            });
+        };
+    </script>
+</head>
+
+<body style="background-color:#fafafa;">
+    <div class="main-container" id="cart">
+        <div class="panel">
+            <div class="page__hd">
+                <h1 class="page__title">Cart Overview</h1>
+            </div>
+            <div class="page__bd">
+                <div class="webvUI-panel webvUI-panel_access">
+                    <div class="webvUI-panel__hd">
+                        Food
+                    </div>
+
+                    <div class="webvUI-panel__bd">
+                        <a href="javascript:void(0);" class="webvUI-media-box webvUI-media-box_appmsg">
+                            <% for(var i=0; i < image.length; i++) { %>
+                                <div class="webvUI-media-box__hd">
+                                    <img class="webvUI-media-box__thumb" src="<%= image[i]%>" alt="">
+                                </div>
+                            <% } %>
+                            <div class="webvUI-media-box__bd">
+                                <% for(var i=0; i < food.length; i++) { %>
+                                    <h4 class="webvUI-media-box__title">
+                                        <%= food[i] %>
+                                    </h4>
+                                <% } %>
+                                <% for(var i=0; i < price.length; i++) { %>
+                                    <p class="webvUI-media-box__desc">
+                                        <%= price[i] %>$
+                                    </p>
+                                <% } %>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="webvUI-bottombtn">
+            <button type="button" class="webvUI-btn webvUI-btn_primary" id="cartNav" onclick="switchVisible();">⬅️ Proceed to Checkout</a>
+        </div>
+    </div>
+    <div class="main-container" id="detail" style="display: none">
+        <div class="page input js_show">
+            <div class="page__hd">
+                <h1 class="page__title" style="text-align: center">FoodBank</h1>
+            </div>
+            <form action="/checkout" method="post">
+                <input type="hidden" name="psid" id="psid">
+                <div class="page__bd">
+                    <div class="webvUI-cells__title">Forms</div>
+                    <div class="webvUI-cells webvUI-cells_form">
+                        <div class="webvUI-cell">
+                            <div class="webvUI-cell__hd">
+                                <label class="webvUI-label">Mobile</label>
+                            </div>
+                            <div class="webvUI-cell__bd">
+                                <input class="webvUI-input" type="number" name="nMobile" pattern="[0-9]*" placeholder="Mobile Number" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="webvUI-cells__title">Address</div>
+                    <div class="webvUI-cells webvUI-cells_form">
+                        <div class="webvUI-cell">
+                            <div class="webvUI-cell__hd">
+                                <label class="webvUI-label">Address 1</label>
+                            </div>
+                            <div class="webvUI-cell__bd">
+                                <input class="webvUI-input" type="text" name="sAddress1" placeholder="Address 1" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="webvUI-cells webvUI-cells_form">
+                        <div class="webvUI-cell">
+                            <div class="webvUI-cell__hd">
+                                <label class="webvUI-label">Address 2</label>
+                            </div>
+                            <div class="webvUI-cell__bd">
+                                <input class="webvUI-input" type="text" name="sAddress2" placeholder="Address 1" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="webvUI-cells webvUI-cells_form">
+                        <div class="webvUI-cell">
+                            <div class="webvUI-cell__hd">
+                                <label class="webvUI-label">City</label>
+                            </div>
+                            <div class="webvUI-cell__bd">
+                                <input class="webvUI-input" type="text" name="sCity" placeholder="City" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="webvUI-cells webvUI-cells_form">
+                        <div class="webvUI-cell">
+                            <div class="webvUI-cell__hd">
+                                <label class="webvUI-label">Pincode</label>
+                            </div>
+                            <div class="webvUI-cell__bd">
+                                <input class="webvUI-input" type="number" pattern="[1-9][0-9]{5}" name="nPincode" placeholder="pincode" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="webvUI-cells__title">Special Request</div>
+                    <div class="webvUI-cells webvUI-cells_form">
+                        <div class="webvUI-cell">
+                            <div class="webvUI-cell__bd">
+                                <textarea class="webvUI-textarea" placeholder="Please enter text" rows="3" name="sNotice"></textarea>
+                                <div class="webvUI-textarea-counter">
+                                    <span>0</span> /200</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="webvUI-btn-area">
+                        <button type="button" class="webvUI-btn webvUI-btn_primary" id="goBack" onclick="switchVisible();">⬅️ Go Back</button>
+                        <button type="submit" class="webvUI-btn webvUI-btn_primary" id="submitButton" type="submit">Submit</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        function switchVisible() {
+            if (document.getElementById('cart').style.display == 'none') {
+                document.getElementById('cart').style.display = 'block';
+                document.getElementById('detail').style.display = 'none';
+            }
+            else {
+                document.getElementById('cart').style.display = 'none';
+                document.getElementById('detail').style.display = 'block';
+            }
+        }
+    </script>
+
+</html>

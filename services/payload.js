@@ -97,7 +97,8 @@ const sendButtonMessage = async (recipientId, text, buttons) => {
             }
         }
     };
-
+    console.log(messageData.message.attachment.payload);
+    
     await callSendAPI(messageData);
 }
 
@@ -136,10 +137,11 @@ const sendReceiptMessage = async (
     address,
     summary,
     adjustments,
-    order_url
+    order_url,
+    receiptId
 ) => {
     // Generate a random receipt ID as the API requires a unique ID
-    var receiptId = "order" + Math.floor(Math.random() * 1000);
+    // var receiptId = "order" + Math.floor(Math.random() * 1000);
 
     var messageData = {
         recipient: {

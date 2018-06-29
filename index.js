@@ -15,6 +15,9 @@ const Food = require('./models/food');
 const User = require('./models/user')
 const FoodTypes = require('./models/food-Type')
 const async = require('async')
+const ejs = require('ejs');
+const randomstring = require("randomstring");
+var frameguard = require('frameguard')
 
 // Food.find({},function(error,result){
 //     console.log(result)
@@ -41,6 +44,7 @@ app.set("port", process.env.PORT || 5000);
 // set the view engine to ejs
 app.set('view engine', 'ejs');
 //serve static files in the public directory
+app.use(express.static(__dirname + '/public'));
 app.use('/public', express.static(__dirname + '/public'));
 // Process application/x-www-form-urlencoded
 app.use(
@@ -50,6 +54,13 @@ app.use(
 );
 // Process application/json
 app.use(bodyParser.json());
+
+
+// Define the URLs we'll allow.
+var ALLOWED_BY = new Set([
+    'https://facebook.com',
+    'https://messanger.com'
+])
 const apiAiService = apiai(constant.API_AI_CLIENT_ACCESS_TOKEN, {
     language: "en",
     requestSource: "fb"
@@ -77,10 +88,68 @@ app.use(function (req, res, next) {
     next();
 });
 
-// Index route
-app.get("/", function (req, res) {
-    res.render('index');
+app.get('/checkout/:id', async (req, res) => {
+    var senderd = req.params.id;
+    var foodName = [];
+    var nPrice = [];
+    var sImage = [];
+    await User.findOne({ sFacebookId: senderd }, async (error, result) => {
+        result.aCart.forEach(el => {
+            el.sItem.forEach(el2 => {
+                foodName.push(el2)
+            });
+        })
+        await Food.find({ sTitle: { $in: foodName } }, async (error, result) => {
+            await result.forEach(el => {
+                sImage.push(el.sImage);
+                nPrice.push(el.nPrice);
+            })
+        })
+        await console.log(foodName);
+        await console.log(nPrice);
+        await console.log(sImage);
+        let referer = req.get('Referer');
+        if (referer) {
+            cli.blue(referer)
+            if (referer.indexOf('messenger') >= 0) {
+                res.setHeader('Content-Security-Policy', 'frame-ancestors https://www.messenger.com/');
+            } else if (referer.indexOf('facebook') >= 0) {
+                res.setHeader('Content-Security-Policy', 'frame-ancestors https://www.facebook.com/');
+            }
+            res.render('checkout', {
+                food: foodName,
+                price: nPrice,
+                image: sImage
+            });
+        }
+        await console.log("Done");
+    })
 });
+
+app.post('/checkout', (req, res) => {
+    console.log(req.body);
+    var psid = req.body.psid;
+    User.findOne({ sFacebookId: psid }, (error, result) => {
+        let data = result.aUserInfo;
+        data.sAddress1 = req.body.sAddress1
+        data.sAddress2 = req.body.sAddress2
+        data.nMobile = req.body.nMobile
+        data.sCity = req.body.sCity
+        data.nPincode = req.body.nPincode
+        data.sNotice = req.body.sNotice
+        result.eStatus = "r"
+        result.save();
+        var responseText = "Your order is Successfully received.";
+        var buttons = [
+            {
+                "type": "postback",
+                "title": "See Receipt",
+                "payload": "VIEWRECEIPT"
+            }
+        ]
+        sendButtonMessage(psid, responseText, buttons)
+    })
+})
 
 // for Facebook verification
 app.get("/webhook/", function (req, res) {
@@ -267,7 +336,37 @@ function handleEcho(messageId, appId, metadata) {
 /**
  * Handle Action  and based on It send Payload 
  */
- function handleApiAiAction(sender, action, responseText, contexts, parameters) {
+function handleApiAiAction(sender, action, responseText, contexts, parameters) {
+    function sendCartView(sender) {
+        setTimeout(async () => {
+            /**
+             * Check if cart has active status then send the cart response
+             */
+            await User.findOne({ $and: [{ sFacebookId: sender }, { eStatus: "i" }] }
+                , (error, result) => {
+                    if (result === null) {
+                        EmptyCart(sender)
+                        return false
+                    }
+                    console.log(result);
+                    var responseText = "You have " + "*" + result.aCart[0].sItem.join(', ') + "*" + " in your Cart, and Your total amount is " + "_" + "₹" + result.aCart[0].nPrice + "_";
+                    var replies = [{
+                        "content_type": "text",
+                        "title": "Checkout",
+                        "payload": "Checkout please",
+                    }, {
+                        "content_type": "text",
+                        "title": "Add More Food",
+                        "payload": "Add More Food",
+                    }, {
+                        "content_type": "text",
+                        "title": "Clear Cart",
+                        "payload": "Clear Cart please",
+                    }];
+                    sendQuickReply(sender, responseText, replies);
+                })
+        }, 1000);
+    }
     function foodContent(paramenters, sender) {
         var type = paramenters.foodType;
         console.log("Type::", paramenters.foodType);
@@ -292,45 +391,26 @@ function handleEcho(messageId, appId, metadata) {
         })
         // handleCardMessages(elements, sender)
     }
-    function foodType(action, parameters, sender) {
-        var type = parameters["foodType"];
-        console.log(type);
-        if (type.length > 1) {
-            cli.magenta("IN IFFF");
-            var elements = [];
-            var promise = function () {
-                return new Promise(function (resolve, reject) {
-                     async.eachSeries(type, async (foodType) => {
-                        var elements = [];
-                         await Food.find({ sType: foodType }, (error, result) => {
-                            result.forEach(el => {
-                                elements.push({
-                                    "title": el.sTitle,
-                                    "subtitle": el.sSubTitle,
-                                    "imageUrl": el.sImage,
-                                    "buttons": [{
-                                        "text": "Add to Cart",
-                                        "postback": el.sPostback
-                                    }]
-                                })
-                            })
-                            
-                        })
-                        resolve();
-                    }) 
-                })
-            };
-            promise().then(()=>{
-                handleCardMessages(elements, sender)
-            })
-        } else if (action === "PIZZAMORE" || type === "pizza") {
-            cli.magenta("IN ELSE IFFF 1")
 
+    function EmptyCart(sender) {
+        var responseText = "Your cart is *EMPTY* \n\nYou shoud add something from Menu in your cart";
+        var replies = [{
+            "content_type": "text",
+            "title": "Browse Food 🍕 🍔",
+            "payload": "Browse Food",
+        }]
+        sendQuickReply(sender, responseText, replies)
+    }
+    function foodTyped(action, parameters, sender) {
+        console.log(parameters);
+        var type = parameters["foodType"];
+        if (action === "PIZZAMORE" || type === "pizza") {
+            cli.magenta("IN ELSE IFFF 1")
             var elements = [];
             Food.find({ sType: "pizza" }, (error, result) => {
                 result.forEach(el => {
                     elements.push({
-                        "title": el.sTitle,
+                        "title": el.sTitle + " " + "₹" + el.nPrice,
                         "subtitle": el.sSubTitle,
                         "imageUrl": el.sImage,
                         "buttons": [{
@@ -347,7 +427,7 @@ function handleEcho(messageId, appId, metadata) {
             Food.find({ sType: "burger" }, (error, result) => {
                 result.forEach(el => {
                     elements.push({
-                        "title": el.sTitle,
+                        "title": el.sTitle + " " + "₹" + el.nPrice,
                         "subtitle": el.sSubTitle,
                         "imageUrl": el.sImage,
                         "buttons": [{
@@ -362,12 +442,11 @@ function handleEcho(messageId, appId, metadata) {
             handleCardMessages(elements, sender)
         } else if (action === "SENDWHICHMORE" || type === "sandwich") {
             cli.magenta("IN ELSE IFFF 3")
-
             var elements = [];
             Food.find({ sType: "sandwich" }, (error, result) => {
                 result.forEach(el => {
                     elements.push({
-                        "title": el.sTitle,
+                        "title": el.sTitle + " " + "₹" + el.nPrice,
                         "subtitle": el.sSubTitle,
                         "imageUrl": el.sImage,
                         "buttons": [{
@@ -380,22 +459,78 @@ function handleEcho(messageId, appId, metadata) {
                 handleCardMessages(elements, sender)
             })
             handleCardMessages(elements, sender)
-        } else {
+        } else if (parameters.foodType.length >= 1) {
+            cli.magenta("IN IFFF");
+            async.eachSeries(type, async (foodType) => {
+                var elements = [];
+                await Food.find({ sType: foodType }, async (error, result) => { // ["bureger","pizza"]
+                    result.forEach(el => {
+                        elements.push({
+                            "title": el.sTitle + " " + "₹" + el.nPrice,
+                            "subtitle": el.sSubTitle,
+                            "imageUrl": el.sImage,
+                            "buttons": [{
+                                "text": "Add to Cart",
+                                "postback": el.sPostback
+                            }]
+                        })
+                    })
+                    var responseText = "Here is the Menu of " + "*" + foodType + "*";
+                    await sendTextMessage(sender, responseText)
+                    await handleCardMessages(elements, sender)
+                })
+            })
+            /*
+            To give all value in One slider
+                Food.find({ sType: { $in: type } }, (error, result) => { // ["bureger","pizza"]
+                    result.forEach(el => {
+                        elements.push({
+                            "title": el.sTitle,
+                            "subtitle": el.sSubTitle,
+                            "imageUrl": el.sImage,
+                            "buttons": [{
+                                "text": "Add to Cart",
+                                "postback": el.sPostback
+                            }]
+                        })
+                    })
+                    handleCardMessages(elements, sender)
+                })
+                */
+        }
+        else {
             sendTextMessage(sender, "Sorryy we don't Provide that.")
         }
     }
     cli.magenta(action)
     switch (action) {
+
         case "FACEBOOK_WELCOME":
             greetUserText(sender);
             break;
         case "food-browse":
         case "food-search":
-            console.log(parameters.foodType);
-            console.log(parameters.pizza);
-            console.log(parameters.sandwich);
-            console.log(parameters.burger);
-            if (parameters.foodType.length > 0) {
+            console.log(parameters);
+            if (Object.keys(parameters).length === 0) {
+                var elements = [];
+                FoodTypes.find({}, async (error, result) => { // ["bureger","pizza"]
+                    result.forEach(el => {
+                        elements.push({
+                            "title": el.sTitle,
+                            "subtitle": el.sSubTitle,
+                            "imageUrl": el.sImage,
+                            "buttons": [{
+                                "text": "view More",
+                                "postback": el.sPostback
+                            }]
+                        })
+                    })
+                    var responseText = "Here is the Menu of *Burger*, *Pizza* and *Sandwich*";
+                    await sendTextMessage(sender, responseText)
+                    await handleCardMessages(elements, sender)
+                })
+            }
+            else if (parameters.foodType.length > 0) {
                 foodContent(parameters, sender)
             }
             break;
@@ -404,39 +539,252 @@ function handleEcho(messageId, appId, metadata) {
         case "PIZZAMORE":
         case "BURGERMORE":
         case "SENDWHICHMORE":
-            foodType(action, parameters, sender)
+            foodTyped(action, parameters, sender)
             break;
         case "food-add-cart":
-            cli.red("yahoooooooooooooooo");
-            let nPrice = 0;
+
+            cli.red("Add To Cart");
+            let nPrice = [];
+            let sImage = [];
             /**
              * Convert the object into an array by using Object.values 
              * You can flatten the array by using  concat and spread syntax. 
              * Use filter to get only the string
              */
-            // const food = [].concat(...Object.values(parameters)).filter(isNaN);
-            // async.eachSeries(food, (foodName) => {
-            //     Food.find({ sTitle: foodName }, (error, result) => {
-            //         nPrice = nPrice + result[0].nPrice;
-            //         User.findOneAndUpdate({ sFacebookId: sender }, {
-            //             $push: {
-            //                 aCart: {
-            //                     "sName": foodName,
-            //                     "nPrice": result[0].nPrice
-            //                 }
-            //             }
-            //         },(err,result)=>{
-            //             console.log(result);
+            const cart = [].concat(...Object.values(parameters)).filter(isNaN);
+            const nQuantity = parameters.number;
 
-            //         })
-            //     });
-            // });
+            /**
+             * If cart is empty then Give message to add some food
+             */
+            if (cart.length <= 0) {
+                EmptyCart(sender)
+                return false;
+            }
+
+            /**
+             * If cart has some value then search for price and othe data
+             */
+            Food.find({ sTitle: { $in: cart } }, async (error, result) => {
+                console.log(result);
+                // ["bureger","pizza"]
+                result.forEach(el => {
+                    nPrice.push(el.nPrice);
+                });
+                result.forEach(el => {
+                    sImage.push(el.sImage)
+                });
+                // Generate unique receipt id
+                const sReceiptId = randomstring.generate({
+                    length: 12,
+                    charset: 'alphabetic'
+                });;
+
+                //make the total of the cart
+                var sTotal = nPrice.reduce(function (a, b) { return a + b; }, 0);
+
+                // Generate cart payload to add in DB
+                var c = {
+                    sImage: sImage,
+                    sItem: cart,
+                    nPrice: sTotal,
+                    sReceiptId: sReceiptId,
+                    nQuantity: cart.length,
+                }
+
+                /**
+                 * To Find the cart is empty or have some data and according to it add iteams in cart
+                 */
+                await User.findOne({ sFacebookId: sender }, (error, result2) => {
+                    result2.eStatus = "i";
+                    result2.aCart.forEach(el => {
+                        if (el.eDeliveryStatus == 'n') {
+                            el.sItem.push(cart);
+                            el.sImage.push(sImage)
+                            el.nPrice = el.nPrice + sTotal;
+                            el.nQuantity = cart.length + el.nQuantity;
+                            result2.save();
+
+                        } else {
+                            result2.eStatus = "i";
+                            result2.aCart = c;
+                            result2.save();
+                        }
+                    })
+                    if (result2.aCart.length <= 0) {
+                        result2.eStatus = "i";
+                        result2.aCart = c;
+                        result2.save();
+                    }
+                }); sendCartView(sender);
+            })
             break;
+
+        case "Food-view-cart":
+            sendCartView(sender)
+            break;
+
+        case "food-cart.add-context:delivery-add":
+            var elements = [];
+            FoodTypes.find({}, async (error, result) => { // ["bureger","pizza"]
+                result.forEach(el => {
+                    elements.push({
+                        "title": el.sTitle,
+                        "subtitle": el.sSubTitle,
+                        "imageUrl": el.sImage,
+                        "buttons": [{
+                            "text": "view More",
+                            "postback": el.sPostback
+                        }]
+                    })
+                })
+                var responseText = "Here is the Menu of *Burger*, *Pizza* and *Sandwich*";
+                await sendTextMessage(sender, responseText)
+                await handleCardMessages(elements, sender)
+            })
+            break;
+
+        case "food-checkout":
+            User.findOne({ $and: [{ sFacebookId: sender }, { eStatus: "i" }] }, (error, result) => {
+                if (result !== null) {
+                    var responseText = "Are you sure you want to checkout?"
+                    var buttons = [{
+                        type: "web_url",
+                        url: constant.SERVER_URL + "/checkout/" + sender,
+                        title: "Yes",
+                        webview_height_ratio: "tall",
+                        messenger_extensions: true
+                    },
+                    {
+                        type: "postback",
+                        "title": "no",
+                        "payload": "No not right now"
+                    }
+                    ]
+                    sendButtonMessage(sender, responseText, buttons)
+                } else {
+                    EmptyCart(sender)
+                }
+            })
+            break;
+
+        case "food-checkout.food-checkout-no":
+            var responseText = "Don't worry you have your food in your cart you can checkout anytime";
+            sendTextMessage(sender, responseText);
+            break;
+
+        case "food-checkout.food-checkout-yes":
+            console.log(parameters);
+            console.log(contexts);
+            break;
+
+        case "food-clear-card":
+            User.findOne({
+                $and: [
+                    { sFacebookId: sender },
+                    { aCart: { '$elemMatch': { "eDeliveryStatus": 'n' } } }
+                ]
+            }, (error, result) => {
+                console.log(result);
+                if (result == null) {
+                    EmptyCart(sender)
+                } else {
+                    console.log(result);
+                    result.eStatus = "n"
+                    result.aCart = [];
+                    result.save();
+                    (async function foo() {
+                        var responseText = "Sure, I just Cleard your cart."
+                        await sendTextMessage(sender, responseText);
+                        await EmptyCart(sender)
+                    }());
+                }
+            })
+            break;
+
+        case "VIEWRECEIPT":
+            let recipient_name;
+            let currency = "INR";
+            let payment_method = "COD";
+            let timestamp = Math.floor(Date.now() / 1000);
+            let summary = [];
+            let elementRec = []
+            let adjustments = [{
+                "name": "No Coupon",
+                "amount": 0.01
+            }];
+            let order_url = "https://37cf1e51.ngrok.io";
+            // var summary = {}
+            User.findOne({ $and: [{ sFacebookId: sender }, { eStatus: "r" }] }, async (error, result) => {
+                recipient_name = result.sFacebookName;
+                //timestamp = result.aCart[0].dTimestamp
+                // elementRec = data.reduce((r, { sItem, sImage, nQuantity: quantity, nPrice: price }) =>
+                //     r.concat(sItem.map((title, i) => ({
+                //         title, subTitle: title, quantity, price, currency: 'INR', image_url: sImage[i]
+                //     }))),
+                //     []
+                // );
+                console.log(result.aCart);
+
+                result.aCart.forEach(el => {
+                    el.sItem.forEach((el2, index) => {
+                        elementRec.push({
+                            "title": el2,
+                            "subtitle": el2,
+                            "quantity": 1,
+                            "price": el.nPrice,
+                            "currency": "INR",
+                            "image_url": el.sImage[index]
+                        })
+                    });
+                    summary.push({
+                        "subtotal": el.nPrice,
+                        "shipping_cost": 0,
+                        "total_tax": 0.00,
+                        "total_cost": el.nPrice
+                    })
+                });
+                let receiptId = result.aCart[0].sReceiptId
+
+                let address = {
+                    "street_1": result.aUserInfo.sAddress1,
+                    "street_2": result.aUserInfo.sAddress2,
+                    "city": result.aUserInfo.sCity,
+                    "postal_code": result.aUserInfo.nPincode,
+                    "state": "Gujarat",
+                    "country": "IN"
+                };
+                sendReceiptMessage(sender,
+                    recipient_name,
+                    currency,
+                    payment_method,
+                    timestamp,
+                    elementRec,
+                    address,
+                    ...summary,
+                    adjustments,
+                    order_url, receiptId);
+            })
+
+
+
+
+
+
+
+
+
+
+
+            break;
+
+
         default:
             sendTextMessage(sender, responseText);
             break;
     }
 }
+
 
 
 /*
