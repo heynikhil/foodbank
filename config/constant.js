@@ -4,7 +4,7 @@ module.exports = {
     FB_VERIFY_TOKEN: "heyBot",
     API_AI_CLIENT_ACCESS_TOKEN: "519f9c2b17054142b55c7235819ab4be",
     FB_APP_SECRET: "951087a0aaa1897d0b9347322894e798",
-    SERVER_URL: "https://a356a551.ngrok.io",
+    SERVER_URL: "https://foodforfood.herokuapp.com/",
     dbURL: "mongodb://admin:admin@ds137740.mlab.com:37740/yudiz",
 
 }
